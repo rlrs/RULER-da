@@ -230,11 +230,23 @@ def generate_input_output(num_haystack):
         if args.type_haystack == 'noise':
             sentences = [haystack] * num_haystack
         elif args.type_haystack == 'needle':
-            sentences = [haystack.format(
-                type_needle_v=display_type_v,
-                key=generate_random(args.type_needle_k),
-                value=generate_random(args.type_needle_v),
-            ) for _ in range(num_haystack)]
+            # Build distractor needles, ensuring keys do NOT collide with true keys
+            true_keys_lower = set(k.lower() for k in keys)
+            used_keys_lower = set(true_keys_lower)
+            sentences = []
+            for _ in range(num_haystack):
+                dk = generate_random(args.type_needle_k)
+                tries = 0
+                # Avoid any collision with true keys (and avoid duplicates among distractors)
+                while dk.lower() in used_keys_lower and tries < 50:
+                    dk = generate_random(args.type_needle_k)
+                    tries += 1
+                used_keys_lower.add(dk.lower())
+                sentences.append(haystack.format(
+                    type_needle_v=display_type_v,
+                    key=dk,
+                    value=generate_random(args.type_needle_v),
+                ))
 
 
         indexes = sorted(random.sample(range(num_haystack), len(needles)), reverse=True)
