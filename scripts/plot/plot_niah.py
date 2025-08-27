@@ -26,6 +26,7 @@ from pathlib import Path
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
 
 
@@ -193,11 +194,10 @@ def plot_len_depth_heatmap(root: Path, task: str, seqs, out_dir: Path, bins: int
         return
 
     plt.figure(figsize=(max(6, len(valid_seqs) * 0.6), 4.5))
-    # Red (0%) to Green (100%) colormap
-    cmap = plt.cm.get_cmap('RdYlGn').copy()
-    # Grey-out missing bins
+    # Red (0%) to Green (100%) colormap (no deprecated get_cmap)
+    cmap = mpl.colormaps['RdYlGn'].with_extremes(bad='#dddddd')
+    # Grey-out missing bins via masked array
     acc_masked = np.ma.masked_invalid(acc)
-    cmap.set_bad(color='#dddddd')
     im = plt.imshow(acc_masked, origin='lower', aspect='auto', cmap=cmap,
                     vmin=0, vmax=100,
                     extent=[0, len(valid_seqs), 0, 100])
