@@ -142,14 +142,25 @@ def plot_acc_vs_depth(root: Path, task: str, seq_len: int, out_dir: Path, bins: 
 def plot_len_depth_heatmap(root: Path, task: str, seqs, out_dir: Path, bins: int = 20):
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    acc = np.full((bins, len(seqs)), np.nan, dtype=float)
-
-    for ci, L in enumerate(seqs):
+    # Filter to seqs that actually have both data and preds for this task
+    valid_seqs = []
+    for L in seqs:
         pred_file = root / str(L) / "pred" / f"{task}.jsonl"
         data_file = root / str(L) / "data" / task / "validation.jsonl"
-        if not pred_file.exists() or not data_file.exists():
+        if pred_file.exists() and data_file.exists():
+            valid_seqs.append(L)
+        else:
             print(f"[warn] Missing files for {task} @ {L}: {pred_file if pred_file.exists() else 'pred missing'}, {data_file if data_file.exists() else 'data missing'}")
-            continue
+
+    if not valid_seqs:
+        print(f"[warn] Heatmap skipped for {task} under {root} — no lengths have both data and predictions")
+        return
+
+    acc = np.full((bins, len(valid_seqs)), np.nan, dtype=float)
+
+    for ci, L in enumerate(valid_seqs):
+        pred_file = root / str(L) / "pred" / f"{task}.jsonl"
+        data_file = root / str(L) / "data" / task / "validation.jsonl"
         preds = {r["index"]: r for r in load_jsonl(pred_file)}
         data = load_jsonl(data_file)
 
@@ -178,15 +189,21 @@ def plot_len_depth_heatmap(root: Path, task: str, seqs, out_dir: Path, bins: int
             acc[:, ci] = np.where(tot > 0, 100.0 * cnt / tot, np.nan)
 
     if np.all(np.isnan(acc)):
-        print(f"[warn] Heatmap skipped for {task} under {root} — no valid bins across lengths {seqs}")
+        print(f"[warn] Heatmap skipped for {task} under {root} — no valid bins across lengths {valid_seqs}")
         return
 
-    plt.figure(figsize=(max(6, len(seqs) * 0.6), 4.5))
-    im = plt.imshow(acc, origin='lower', aspect='auto', cmap='viridis',
-                    extent=[0, len(seqs), 0, 100])
+    plt.figure(figsize=(max(6, len(valid_seqs) * 0.6), 4.5))
+    # Red (0%) to Green (100%) colormap
+    cmap = plt.cm.get_cmap('RdYlGn').copy()
+    # Grey-out missing bins
+    acc_masked = np.ma.masked_invalid(acc)
+    cmap.set_bad(color='#dddddd')
+    im = plt.imshow(acc_masked, origin='lower', aspect='auto', cmap=cmap,
+                    vmin=0, vmax=100,
+                    extent=[0, len(valid_seqs), 0, 100])
     plt.colorbar(im, label='Accuracy (%)')
     # X ticks at each seq index with labels of seqs
-    plt.xticks(ticks=np.arange(len(seqs)) + 0.5, labels=[str(s) for s in seqs], rotation=45)
+    plt.xticks(ticks=np.arange(len(valid_seqs)) + 0.5, labels=[str(s) for s in valid_seqs], rotation=45)
     plt.yticks(ticks=np.linspace(0, 100, 6), labels=[f"{int(v)}" for v in np.linspace(0, 100, 6)])
     plt.xlabel("Max sequence length (tokens)")
     plt.ylabel("Relative depth in input (%)")
