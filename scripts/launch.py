@@ -110,8 +110,7 @@ def ensure_dataset(task: str, seq_len: int, num_samples: int, benchmark: str,
 
 
 def run_predictions(task: str, benchmark: str, data_dir: Path, pred_dir: Path,
-                    model_name: str, temperature: float, top_k: int, top_p: float,
-                    batch_size: int) -> None:
+                    model_name: str, temperature: float, top_k: int, top_p: float) -> None:
     pred_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         sys.executable, str(Path(__file__).parent / "pred/call_api.py"),
@@ -124,7 +123,6 @@ def run_predictions(task: str, benchmark: str, data_dir: Path, pred_dir: Path,
         "--temperature", str(temperature),
         "--top_k", str(top_k),
         "--top_p", str(top_p),
-        "--batch_size", str(batch_size),
     ]
     subprocess.run(cmd, check=True)
 
@@ -148,7 +146,6 @@ def parse_args():
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--top_k", type=int, default=32)
     p.add_argument("--top_p", type=float, default=1.0)
-    p.add_argument("--batch_size", type=int, default=1)
     p.add_argument("--model", default=None, help="served model id for OpenAI API; if omitted, discover via /v1/models")
     p.add_argument("--model_local_path", default=None, help="HF model dir for tokenizer (optional)")
     # No manual chat template; server-side tokenizer applies it
@@ -202,7 +199,7 @@ def main():
             run_predictions(
                 task=task, benchmark=args.benchmark, data_dir=data_dir, pred_dir=pred_dir,
                 model_name=model_name, temperature=args.temperature, top_k=args.top_k,
-                top_p=args.top_p, batch_size=args.batch_size,
+                top_p=args.top_p,
             )
 
         run_eval(pred_dir=pred_dir, benchmark=args.benchmark)

@@ -35,7 +35,7 @@ import json
 import yaml
 import os
 import sys
-import threading
+import asyncio
 import importlib
 import math
 import time
@@ -85,13 +85,10 @@ parser.add_argument("--top_p", type=float, default=1.0)
 parser.add_argument("--random_seed", type=int, default=0)
 parser.add_argument("--stop_words", type=str, default='')
 parser.add_argument("--sliding_window_size", type=int)
-parser.add_argument("--threads", type=int, default=4)
-parser.add_argument("--batch_size", type=int, default=1)
 
 args = parser.parse_args()
 args.stop_words = list(filter(None, args.stop_words.split(',')))
-if args.server_type == 'hf' or args.server_type == 'gemini':
-    args.threads = 1
+DEFAULT_CONCURRENCY = int(os.getenv("OPENAI_CONCURRENCY", "100"))
 
 
 def get_llm(tokens_to_generate):
@@ -259,60 +256,70 @@ def main():
                 'length': length,
             }
 
-    threads = []
-    outputs_parallel = [{} for _ in range(len(data))]
+    # Async path for OpenAI; sequential fallback for others
+    if args.server_type == 'openai':
+        from client_wrappers import AsyncOpenAIClient
+        async_llm = AsyncOpenAIClient(
+            model_name=args.model_name_or_path,
+            temperature=args.temperature,
+            top_k=args.top_k,
+            top_p=args.top_p,
+            random_seed=args.random_seed,
+            stop=args.stop_words,
+            tokens_to_generate=config['tokens_to_generate'],
+        )
 
-    batched_data = []
-    batch = []
-    for idx, data_point in enumerate(data):
-        data_point['idx'] = idx
+        async def worker(dp, sem, lock, fout):
+            async with sem:
+                pred = await async_llm.generate(dp['input'])
+                if isinstance(pred['text'], str):
+                    pred_text = pred['text']
+                elif len(pred['text']) > 0:
+                    pred_text = pred['text'][0]
+                else:
+                    pred_text = ''
+                out = {
+                    'index': dp['index'],
+                    'pred': pred_text,
+                    'input': dp['input'],
+                    'outputs': dp.get('outputs', []),
+                    'others': dp.get('others', {}),
+                    'truncation': dp.get('truncation', -1),
+                    'length': dp.get('length', -1),
+                }
+                async with lock:
+                    fout.write(json.dumps(out) + '\n')
 
-        if len(batch) >= args.batch_size:
-            batched_data.append(batch)
-            batch = []
+        async def run_async():
+            # setting buffering=1 to flush per line
+            with open(pred_file, 'at', encoding='utf-8', buffering=1) as fout:
+                sem = asyncio.Semaphore(max(1, DEFAULT_CONCURRENCY))
+                lock = asyncio.Lock()
+                tasks = [asyncio.create_task(worker(dp, sem, lock, fout)) for dp in data]
+                for t in tqdm(asyncio.as_completed(tasks), total=len(tasks)):
+                    await t
 
-        batch.append(data_point)
-
-    if len(batch):
-        batched_data.append(batch)
-
-    # setting buffering=1 to force to dump the output after every line, so that we can see intermediate generations
-    with open(pred_file, 'at', encoding="utf-8", buffering=1) as fout:
-        # the data is processed sequentially, so we can store the start and end of current processing window
-        start_idx = 0  # window: [start_idx, end_idx]
-
-        for batch_idx, batch in tqdm(enumerate(batched_data), total=len(batched_data)):
-            idx_list = [data_point['idx'] for data_point in batch]
-            end_idx = idx_list[-1]  # the data in a batch is ordered
-
-            thread = threading.Thread(
-                target=get_output,
-                kwargs=dict(
-                    idx_list=idx_list,
-                    index_list=[data_point['index'] for data_point in batch],
-                    input_list=[data_point['input'] for data_point in batch],
-                    outputs_list=[data_point['outputs'] for data_point in batch],
-                    others_list=[data_point.get('others', {}) for data_point in batch],
-                    truncation_list=[data_point.get('truncation', -1) for data_point in batch],
-                    length_list=[data_point.get('length', -1) for data_point in batch],
-                ),
-            )
-            thread.start()
-            threads.append(thread)
-
-            is_last_batch = (batch_idx == len(batched_data) - 1)
-
-            if (len(threads) == args.threads) or is_last_batch:
-                for thread in threads:
-                    thread.join()
-                threads = []
-
-                # dump the results in current processing window on disk
-                for idx in range(start_idx, end_idx + 1):
-                    if len(outputs_parallel[idx]) > 0:
-                        fout.write(json.dumps(outputs_parallel[idx]) + '\n')
-
-                start_idx = end_idx + 1
+        asyncio.run(run_async())
+    else:
+        with open(pred_file, 'at', encoding='utf-8', buffering=1) as fout:
+            for dp in tqdm(data):
+                pred = llm(dp['input'])
+                if isinstance(pred['text'], str):
+                    pred_text = pred['text']
+                elif len(pred['text']) > 0:
+                    pred_text = pred['text'][0]
+                else:
+                    pred_text = ''
+                out = {
+                    'index': dp['index'],
+                    'pred': pred_text,
+                    'input': dp['input'],
+                    'outputs': dp.get('outputs', []),
+                    'others': dp.get('others', {}),
+                    'truncation': dp.get('truncation', -1),
+                    'length': dp.get('length', -1),
+                }
+                fout.write(json.dumps(out) + '\n')
 
     print(f"Used time: {round((time.time() - start_time) / 60, 1)} minutes")
 

@@ -242,6 +242,10 @@ class OpenAIClient:
         response = {'text': [outputs.choices[0].message.content]}
         return response
 
+    def process_batch(self, prompts: List[str], **kwargs) -> List[dict]:
+        # Naive batch: call sequentially; outer caller handles threading/batching.
+        return [self.__call__(prompt) for prompt in prompts]
+
     
     def get_azure_api_key(
         self,
@@ -353,3 +357,43 @@ class GeminiClient:
         import google.generativeai as genai
         genai.configure(api_key=os.environ["GEMINI_API_KEY"])
         return genai.GenerativeModel(self.model_name)
+
+
+class AsyncOpenAIClient:
+    def __init__(
+        self,
+        model_name,
+        **generation_kwargs
+    ):
+        # Allow empty API key for local OpenAI-compatible servers (e.g., vLLM)
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "dummy")
+        self.openai_base_url = os.getenv("OPENAI_BASE_URL", None)
+        self.model_name = model_name
+        self.generation_kwargs = generation_kwargs
+        self._create_client()
+
+    def _create_client(self):
+        from openai import AsyncOpenAI
+        if self.openai_base_url:
+            self.client = AsyncOpenAI(api_key=self.openai_api_key, base_url=self.openai_base_url)
+        else:
+            self.client = AsyncOpenAI(api_key=self.openai_api_key)
+
+    async def generate(self, prompt: str) -> dict:
+        msgs = [{"role": "user", "content": prompt}]
+        request = self.generation_kwargs
+        try:
+            outputs = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=msgs,
+                max_tokens=request['tokens_to_generate'],
+                temperature=request['temperature'],
+                seed=request['random_seed'],
+                top_p=request['top_p'],
+                stop=request['stop'],
+            )
+            text = outputs.choices[0].message.content
+        except Exception:
+            traceback.print_exc()
+            text = ''
+        return {'text': [text]}
