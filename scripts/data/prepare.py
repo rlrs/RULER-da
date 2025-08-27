@@ -137,8 +137,11 @@ def main():
             else:
                 print("Error:")
                 print(result.stderr)
+                raise subprocess.CalledProcessError(result.returncode, command, result.stdout, result.stderr)
         except subprocess.CalledProcessError as e:
             print("Error output:", e.stderr)
+            # Abort on failure; do not claim success
+            raise SystemExit(1)
 
         print(f"Prepare {args.task} with lines: {args.num_samples} to {save_file}")
         print(f"Used time: {round((time.time() - start_time) / 60, 1)} minutes")

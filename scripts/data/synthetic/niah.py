@@ -39,6 +39,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from tokenizer import select_tokenizer
 from manifest_utils import write_manifest
+import nltk
 from nltk.tokenize import sent_tokenize
 import logging
 
@@ -182,6 +183,29 @@ def generate_input_output(num_haystack):
             # Repeat haystack as many times as needed and slice to num_haystack
             repeats = (num_haystack + len(haystack) - 1) // len(haystack)  # Ceiling division
             text = " ".join((haystack * repeats)[:num_haystack])
+        # Robust sentence tokenization for Danish: ensure NLTK punkt_tab or punkt is available, otherwise crash.
+        def ensure_nltk_punkt_danish():
+            try:
+                nltk.data.find('tokenizers/punkt_tab')
+            except LookupError:
+                try:
+                    nltk.download('punkt_tab', quiet=True)
+                except Exception:
+                    pass
+            try:
+                return sent_tokenize("Test.", language="danish") is not None
+            except Exception:
+                try:
+                    nltk.data.find('tokenizers/punkt')
+                except LookupError:
+                    nltk.download('punkt', quiet=True)
+                # final attempt with classic punkt
+                try:
+                    return sent_tokenize("Test.", language="danish") is not None
+                except Exception as e:
+                    raise RuntimeError("NLTK sentence tokenizer for Danish is not available (punkt_tab/punkt)") from e
+
+        ensure_nltk_punkt_danish()
         document_sents = sent_tokenize(text.strip(), language="danish")
         insertion_positions = [0] + \
                               sorted([int(len(document_sents) * (depth / 100)) for depth in random.sample(DEPTHS, len(needles))]) + \

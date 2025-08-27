@@ -41,6 +41,7 @@ import pdb
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from tokenizer import select_tokenizer
 from manifest_utils import write_manifest
+import nltk
 from nltk.tokenize import sent_tokenize
 import numpy as np
 import heapq
@@ -138,6 +139,26 @@ def generate_input_output(num_noises, num_chains, num_hops, is_icl=False):
 
     if args.type_haystack == 'essay':
         text = " ".join(haystack[:num_noises])
+        def ensure_nltk_punkt_danish():
+            try:
+                nltk.data.find('tokenizers/punkt_tab')
+            except LookupError:
+                try:
+                    nltk.download('punkt_tab', quiet=True)
+                except Exception:
+                    pass
+            try:
+                return sent_tokenize("Test.", language="danish") is not None
+            except Exception:
+                try:
+                    nltk.data.find('tokenizers/punkt')
+                except LookupError:
+                    nltk.download('punkt', quiet=True)
+                try:
+                    return sent_tokenize("Test.", language="danish") is not None
+                except Exception as e:
+                    raise RuntimeError("NLTK sentence tokenizer for Danish is not available (punkt_tab/punkt)") from e
+        ensure_nltk_punkt_danish()
         document_sents = sent_tokenize(text.strip(), language="danish")
         chains_flat = shuffle_sublists_heap(chains)
         insertion_positions = [0] + \
