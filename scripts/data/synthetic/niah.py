@@ -160,13 +160,20 @@ def generate_random(type_needle: str):
 
 def generate_input_output(num_haystack):
     keys, values, needles = [], [], []
+    # Danish display labels for value types
+    type_label_map = {
+        'numbers': 'tal',
+        'words': 'ord',
+        'uuids': "UUID'er",
+    }
+    display_type_v = type_label_map.get(args.type_needle_v, args.type_needle_v)
     for _ in range(args.num_needle_k):
         keys.append(generate_random(args.type_needle_k))
         value = []
         for _ in range(args.num_needle_v):
             value.append(generate_random(args.type_needle_v))
             needles.append(needle.format(
-                type_needle_v=args.type_needle_v,
+                type_needle_v=display_type_v,
                 key=keys[-1],
                 value=value[-1],
             ))
@@ -224,7 +231,7 @@ def generate_input_output(num_haystack):
             sentences = [haystack] * num_haystack
         elif args.type_haystack == 'needle':
             sentences = [haystack.format(
-                type_needle_v=args.type_needle_v,
+                type_needle_v=display_type_v,
                 key=generate_random(args.type_needle_k),
                 value=generate_random(args.type_needle_v),
             ) for _ in range(num_haystack)]
@@ -243,13 +250,7 @@ def generate_input_output(num_haystack):
     query = ', '.join(queries[:-1]) + ', og ' + queries[-1] if len(queries) > 1 else queries[0]
 
     template = args.template
-    # Display labels in Danish for value types
-    type_label_map = {
-        'numbers': 'tal',
-        'words': 'ord',
-        'uuids': "UUID'er",
-    }
-    type_needle_v = type_label_map.get(args.type_needle_v, args.type_needle_v)
+    type_needle_v = display_type_v
 
     input_text = template.format(
         type_needle_v=type_needle_v,

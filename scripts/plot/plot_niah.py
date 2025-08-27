@@ -26,6 +26,7 @@ from pathlib import Path
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 # Keep in sync with scripts/data/synthetic/constants.py for 'niah'
@@ -132,24 +133,166 @@ def plot_acc_vs_depth(root: Path, task: str, seq_len: int, out_dir: Path, bins: 
         plt.close()
 
 
+def plot_len_depth_heatmap(root: Path, task: str, seqs, out_dir: Path, bins: int = 20):
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    acc = np.full((bins, len(seqs)), np.nan, dtype=float)
+
+    for ci, L in enumerate(seqs):
+        pred_file = root / str(L) / "pred" / f"{task}.jsonl"
+        data_file = root / str(L) / "data" / task / "validation.jsonl"
+        if not pred_file.exists() or not data_file.exists():
+            continue
+        preds = {r["index"]: r for r in load_jsonl(pred_file)}
+        data = load_jsonl(data_file)
+
+        # bins: counts and totals
+        cnt = np.zeros(bins, dtype=float)
+        tot = np.zeros(bins, dtype=float)
+
+        for row in data:
+            idx = row.get("index")
+            if idx not in preds:
+                continue
+            pred_text = preds[idx].get("pred", "")
+            refs = preds[idx].get("outputs", [])
+            length = row.get("length", 0)
+            token_pos = row.get("token_position_answer", None)
+            if token_pos is None or length <= TOKENS_TO_GENERATE:
+                continue
+            input_len = max(1, length - TOKENS_TO_GENERATE)
+            rel = max(0.0, min(0.999, token_pos / input_len))
+            bi = min(bins - 1, int(rel * bins))
+            ok = correctness_niah(pred_text, refs)
+            cnt[bi] += ok
+            tot[bi] += 1
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            acc[:, ci] = np.where(tot > 0, 100.0 * cnt / tot, np.nan)
+
+    if np.all(np.isnan(acc)):
+        return
+
+    plt.figure(figsize=(max(6, len(seqs) * 0.6), 4.5))
+    im = plt.imshow(acc, origin='lower', aspect='auto', cmap='viridis',
+                    extent=[0, len(seqs), 0, 100])
+    plt.colorbar(im, label='Accuracy (%)')
+    # X ticks at each seq index with labels of seqs
+    plt.xticks(ticks=np.arange(len(seqs)) + 0.5, labels=[str(s) for s in seqs], rotation=45)
+    plt.yticks(ticks=np.linspace(0, 100, 6), labels=[f"{int(v)}" for v in np.linspace(0, 100, 6)])
+    plt.xlabel("Max sequence length (tokens)")
+    plt.ylabel("Relative depth in input (%)")
+    plt.title(f"{task} — Accuracy heatmap (depth × length)")
+    plt.tight_layout()
+    plt.savefig(out_dir / f"{task}_heatmap_len_depth.png", dpi=150)
+    plt.close()
+
+
+def discover_base_dirs(root: Path) -> list[Path]:
+    """Return list of base dirs that contain seq-length subdirs (e.g., <model>/<benchmark>)."""
+    bases = []
+    # Case 1: root is already a base (has numeric subdirs)
+    numeric_kids = [d for d in root.iterdir() if d.is_dir() and d.name.isdigit()]
+    if numeric_kids:
+        bases.append(root)
+    else:
+        # Case 2: search one and two levels down
+        for d1 in [d for d in root.iterdir() if d.is_dir()]:
+            kids = [c for c in d1.iterdir() if c.is_dir() and c.name.isdigit()]
+            if kids:
+                bases.append(d1)
+        if not bases:
+            for d1 in [d for d in root.iterdir() if d.is_dir()]:
+                for d2 in [c for c in d1.iterdir() if c.is_dir()]:
+                    kids = [k for k in d2.iterdir() if k.is_dir() and k.name.isdigit()]
+                    if kids:
+                        bases.append(d2)
+    return bases
+
+
+def discover_seqs(base: Path) -> list[int]:
+    seqs = []
+    for d in base.iterdir():
+        if d.is_dir() and d.name.isdigit() and (d / "pred").exists():
+            try:
+                seqs.append(int(d.name))
+            except ValueError:
+                pass
+    return sorted(seqs)
+
+
+def discover_tasks_for_seq(base: Path, seq: int) -> list[str]:
+    data_dir = base / str(seq) / "data"
+    pred_dir = base / str(seq) / "pred"
+    tasks = set()
+    if data_dir.exists():
+        for d in data_dir.iterdir():
+            if d.is_dir():
+                tasks.add(d.name)
+    if not tasks and pred_dir.exists():
+        for f in pred_dir.glob("*.jsonl"):
+            if f.name.startswith("summary"):
+                continue
+            tasks.add(f.stem)
+    return sorted(tasks)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", required=True, help="benchmark_root/<model>/synthetic")
-    ap.add_argument("--niah_tasks", default="niah_single_2,niah_multikey_1")
-    ap.add_argument("--seqs", default="4096,8192,16384,32768")
-    ap.add_argument("--out_dir", default="plots")
+    ap.add_argument("--root", required=True, help="benchmark_root or benchmark_root/<model>/<benchmark>")
+    ap.add_argument("--niah_tasks", default="", help="optional comma-list; auto-discovered if empty")
+    ap.add_argument("--seqs", default="", help="optional comma-list; auto-discovered if empty")
+    ap.add_argument("--out_dir", default="", help="optional; defaults to <base>/plots")
+    ap.add_argument("--bins", type=int, default=20, help="depth bins for heatmap")
     args = ap.parse_args()
 
     root = Path(args.root)
-    out_dir = Path(args.out_dir)
-    tasks = [t.strip() for t in args.niah_tasks.split(",") if t.strip()]
-    seqs = [int(s) for s in args.seqs.split(",") if s.strip()]
 
-    plot_acc_vs_length(root, tasks, seqs, out_dir)
-    if tasks and seqs:
-        plot_acc_vs_depth(root, tasks[0], max(seqs), out_dir, bins=10)
+    bases = discover_base_dirs(root)
+    if not bases:
+        print(f"No base directories with sequence subfolders found under {root}")
+        return
+
+    for base in bases:
+        # Determine out_dir for this base
+        if args.out_dir:
+            model = base.parent.name
+            benchmark = base.name
+            out_dir = Path(args.out_dir) / f"{model}_{benchmark}"
+        else:
+            out_dir = base / "plots"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Seqs
+        if args.seqs:
+            seqs = [int(s) for s in args.seqs.split(",") if s.strip()]
+        else:
+            seqs = discover_seqs(base)
+        if not seqs:
+            print(f"No sequence lengths found under {base}")
+            continue
+
+        # Tasks
+        if args.niah_tasks:
+            tasks = [t.strip() for t in args.niah_tasks.split(",") if t.strip()]
+        else:
+            tasks = discover_tasks_for_seq(base, seqs[0])
+        if not tasks:
+            print(f"No tasks found under {base}/{seqs[0]}")
+            continue
+
+        # Filter to NIAH tasks by name if user didn't pass explicit list
+        if not args.niah_tasks:
+            tasks = [t for t in tasks if t.startswith("niah_")]
+        if not tasks:
+            print(f"No NIAH tasks found under {base}")
+            continue
+
+        # Plots
+        plot_acc_vs_length(base, tasks, seqs, out_dir)
+        for task in tasks:
+            plot_len_depth_heatmap(base, task, seqs, out_dir, bins=args.bins)
 
 
 if __name__ == "__main__":
     main()
-
