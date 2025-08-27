@@ -50,16 +50,31 @@ def load_jsonl(p: Path):
     return rows
 
 
-def correctness_niah(pred: str, refs):
-    # string_match_all: all gold values must appear in prediction
+def correctness_all(pred: str, refs):
+    """All-match: every gold string must appear in prediction."""
     p = norm(pred)
     rlist = [norm(r) for r in refs]
     return 1.0 if all(r in p for r in rlist) else 0.0
 
 
+def correctness_part(pred: str, refs):
+    """Partial-match: any gold string appearing is success."""
+    p = norm(pred)
+    rlist = [norm(r) for r in refs]
+    return 1.0 if any(r in p for r in rlist) else 0.0
+
+
+def get_correctness_fn(task_name: str):
+    # QA tasks use partial match; others (niah, vt, cwe, fwe) use all-match
+    if task_name.startswith("qa") or task_name == "qa":
+        return correctness_part
+    return correctness_all
+
+
 def plot_acc_vs_length(root: Path, tasks, seqs, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
     for task in tasks:
+        score_fn = get_correctness_fn(task)
         xs, ys = [], []
         for L in seqs:
             pred_file = root / str(L) / "pred" / f"{task}.jsonl"
@@ -75,7 +90,7 @@ def plot_acc_vs_length(root: Path, tasks, seqs, out_dir: Path):
                 if not isinstance(refs, list) or not refs:
                     continue
                 total += 1
-                if correctness_niah(pred_text, refs):
+                if score_fn(pred_text, refs):
                     correct += 1
             if total > 0:
                 xs.append(L)
@@ -182,7 +197,7 @@ def plot_len_depth_heatmap(root: Path, task: str, seqs, out_dir: Path, bins: int
             input_len = max(1, length - TOKENS_TO_GENERATE)
             rel = max(0.0, min(0.999, token_pos / input_len))
             bi = min(bins - 1, int(rel * bins))
-            ok = correctness_niah(pred_text, refs)
+            ok = correctness_all(pred_text, refs)
             cnt[bi] += ok
             tot[bi] += 1
 
@@ -306,17 +321,11 @@ def main():
             print(f"No tasks found under {base}/{seqs[0]}")
             continue
 
-        # Filter to NIAH tasks by name if user didn't pass explicit list
-        if not args.niah_tasks:
-            tasks = [t for t in tasks if t.startswith("niah_")]
-        if not tasks:
-            print(f"No NIAH tasks found under {base}")
-            continue
-
         # Plots
         plot_acc_vs_length(base, tasks, seqs, out_dir)
         for task in tasks:
-            plot_len_depth_heatmap(base, task, seqs, out_dir, bins=args.bins)
+            if task.startswith("niah_"):
+                plot_len_depth_heatmap(base, task, seqs, out_dir, bins=args.bins)
 
 
 if __name__ == "__main__":
