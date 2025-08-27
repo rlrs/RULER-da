@@ -64,6 +64,7 @@ def plot_acc_vs_length(root: Path, tasks, seqs, out_dir: Path):
             pred_file = root / str(L) / "pred" / f"{task}.jsonl"
             data_file = root / str(L) / "data" / task / "validation.jsonl"
             if not pred_file.exists() or not data_file.exists():
+                print(f"[warn] Missing files for {task} @ {L}: {pred_file if pred_file.exists() else 'pred missing'}, {data_file if data_file.exists() else 'data missing'}")
                 continue
             preds = load_jsonl(pred_file)
             total, correct = 0, 0
@@ -87,6 +88,8 @@ def plot_acc_vs_length(root: Path, tasks, seqs, out_dir: Path):
             plt.grid(True, alpha=0.3)
             plt.savefig(out_dir / f"{task}_acc_vs_length.png", dpi=150, bbox_inches="tight")
             plt.close()
+        else:
+            print(f"[warn] No data to plot accuracy vs length for task {task} under {root}")
 
 
 def plot_acc_vs_depth(root: Path, task: str, seq_len: int, out_dir: Path, bins: int = 10):
@@ -94,6 +97,7 @@ def plot_acc_vs_depth(root: Path, task: str, seq_len: int, out_dir: Path, bins: 
     pred_file = root / str(seq_len) / "pred" / f"{task}.jsonl"
     data_file = root / str(seq_len) / "data" / task / "validation.jsonl"
     if not pred_file.exists() or not data_file.exists():
+        print(f"[warn] Missing files for {task} @ {seq_len}: {pred_file if pred_file.exists() else 'pred missing'}, {data_file if data_file.exists() else 'data missing'}")
         return
     preds = {r["index"]: r for r in load_jsonl(pred_file)}
     data = load_jsonl(data_file)
@@ -131,6 +135,8 @@ def plot_acc_vs_depth(root: Path, task: str, seq_len: int, out_dir: Path, bins: 
         plt.grid(True, alpha=0.3)
         plt.savefig(out_dir / f"{task}_acc_vs_depth_{seq_len}.png", dpi=150, bbox_inches="tight")
         plt.close()
+    else:
+        print(f"[warn] No depth-binned data for {task} @ {seq_len} under {root}")
 
 
 def plot_len_depth_heatmap(root: Path, task: str, seqs, out_dir: Path, bins: int = 20):
@@ -142,6 +148,7 @@ def plot_len_depth_heatmap(root: Path, task: str, seqs, out_dir: Path, bins: int
         pred_file = root / str(L) / "pred" / f"{task}.jsonl"
         data_file = root / str(L) / "data" / task / "validation.jsonl"
         if not pred_file.exists() or not data_file.exists():
+            print(f"[warn] Missing files for {task} @ {L}: {pred_file if pred_file.exists() else 'pred missing'}, {data_file if data_file.exists() else 'data missing'}")
             continue
         preds = {r["index"]: r for r in load_jsonl(pred_file)}
         data = load_jsonl(data_file)
@@ -171,6 +178,7 @@ def plot_len_depth_heatmap(root: Path, task: str, seqs, out_dir: Path, bins: int
             acc[:, ci] = np.where(tot > 0, 100.0 * cnt / tot, np.nan)
 
     if np.all(np.isnan(acc)):
+        print(f"[warn] Heatmap skipped for {task} under {root} — no valid bins across lengths {seqs}")
         return
 
     plt.figure(figsize=(max(6, len(seqs) * 0.6), 4.5))
