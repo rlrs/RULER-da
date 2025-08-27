@@ -41,6 +41,6 @@ synthetic=(
     "vt"
     "cwe"
     "fwe"
-    "qa_1"
-    "qa_2"
+    # "qa_1"
+    # "qa_2"
 )

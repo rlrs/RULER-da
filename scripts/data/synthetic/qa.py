@@ -113,7 +113,7 @@ def read_hotpotqa(file):
     return total_qas, total_docs
 
 
-DOCUMENT_PROMPT = "Document {i}:\n{document}"
+DOCUMENT_PROMPT = "Dokument {i}:\n{document}"
 if args.dataset == 'squad':
     QAS, DOCS = read_squad(os.path.join(os.path.dirname(os.path.abspath(__file__)), "json/squad.json"))
 elif args.dataset == 'hotpotqa':

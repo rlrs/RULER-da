@@ -78,8 +78,22 @@ class HFTokenizer:
     def __init__(self, model_path) -> None:
         from transformers import AutoTokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+        # If the HF tokenizer defines a chat template, use it to emulate server-side prompt formatting
+        self._use_chat_template = hasattr(self.tokenizer, "apply_chat_template") and getattr(self.tokenizer, "chat_template", None)
     
     def text_to_tokens(self, text: str) -> List[str]:
+        if self._use_chat_template:
+            try:
+                rendered = self.tokenizer.apply_chat_template(
+                    [{"role": "user", "content": text}],
+                    add_generation_prompt=True,
+                    tokenize=False,
+                )
+                tokens = self.tokenizer.tokenize(rendered)
+                return tokens
+            except Exception:
+                # Fallback to plain tokenization
+                pass
         tokens = self.tokenizer.tokenize(text)
         return tokens
 

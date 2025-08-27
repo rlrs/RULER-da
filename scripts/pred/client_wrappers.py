@@ -133,30 +133,6 @@ class TRTLLMClient(Client):
         return outputs
 
 
-class VLLMClient(Client):
-    def _single_call(
-        self,
-        prompts,
-        tokens_to_generate,
-        temperature,
-        top_p,
-        top_k,
-        random_seed,
-        stop: List[str],
-    ):
-        request = {
-            "prompt": prompts[0],
-            "max_tokens": tokens_to_generate,
-            "temperature": temperature,
-            "top_k": top_k,
-            "top_p": top_p,
-            "stop": stop,
-        }
-        # TODO: random seed is not supported?
-        outputs = self._send_request(request)
-        outputs = outputs['text']
-        return outputs
-
 
 class SGLClient(Client):
     def _single_call(
@@ -210,10 +186,12 @@ class OpenAIClient:
             'gpt-4': 128000,
             'gpt-35-turbo-16k': 16384,
         }
-        self.openai_api_key = os.environ["OPENAI_API_KEY"]
-        self.azure_api_id = os.environ["AZURE_API_ID"]
-        self.azure_api_secret = os.environ["AZURE_API_SECRET"]
-        self.azure_api_endpoint = os.environ["AZURE_API_ENDPOINT"]
+        # Allow empty API key for local OpenAI-compatible servers (e.g., vLLM)
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "dummy")
+        self.azure_api_id = os.getenv("AZURE_API_ID", "")
+        self.azure_api_secret = os.getenv("AZURE_API_SECRET", "")
+        self.azure_api_endpoint = os.getenv("AZURE_API_ENDPOINT", "")
+        self.openai_base_url = os.getenv("OPENAI_BASE_URL", None)
         self.model_name = model_name    
             
         # Azure
@@ -223,18 +201,22 @@ class OpenAIClient:
         
         import tiktoken
         self.encoding = tiktoken.get_encoding("cl100k_base")
-        self.max_length = model2length[self.model_name]
+        self.max_length = model2length.get(self.model_name, 128000)
         self.generation_kwargs = generation_kwargs
         self._create_client()
         
     def _create_client(self,):
         from openai import OpenAI, AzureOpenAI
         
-        # OpenAI
-        if self.openai_api_key:
+        # OpenAI or OpenAI-compatible
+        if self.openai_base_url:
+            # vLLM OpenAI server or any compatible endpoint
             self.client = OpenAI(
-                api_key=self.openai_api_key
+                api_key=self.openai_api_key,
+                base_url=self.openai_base_url,
             )
+        elif self.openai_api_key and not (self.azure_api_id and self.azure_api_secret):
+            self.client = OpenAI(api_key=self.openai_api_key)
 
         # Azure
         elif self.azure_api_id and self.azure_api_secret:
@@ -275,7 +257,7 @@ class OpenAIClient:
             )
         except Exception as e:
             print(f"Error occurred while calling OpenAI: {e}")
-            if self.azure_api_id and self.azure_api_secret and e.status_code == 401:
+            if self.azure_api_id and self.azure_api_secret and getattr(e, 'status_code', None) == 401:
                 # token expired
                 self._create_client()
             
@@ -413,4 +395,3 @@ class GeminiClient:
         import google.generativeai as genai
         genai.configure(api_key=os.environ["GEMINI_API_KEY"])
         return genai.GenerativeModel(self.model_name)
-

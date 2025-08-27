@@ -33,7 +33,7 @@ import argparse
 from pathlib import Path
 from tqdm import tqdm
 import random
-import wonderwords
+import re
 import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from tokenizer import select_tokenizer
@@ -69,24 +69,51 @@ random.seed(args.random_seed)
 # Load Tokenizer
 TOKENIZER = select_tokenizer(args.tokenizer_type, args.tokenizer_path)
 
-nouns = wonderwords.random_word._get_words_from_text_file("nounlist.txt")
-adjs = wonderwords.random_word._get_words_from_text_file("adjectivelist.txt")
-verbs = wonderwords.random_word._get_words_from_text_file("verblist.txt")
-words = nouns + adjs + verbs
-words = sorted(list(set(words)))
-random.Random(args.random_seed).shuffle(words)
-logger.info(f'loaded {len(words)} wonderwords')
+def _read_wordlist(path):
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return [w.strip() for w in f if w.strip()]
+    return []
 
-# Randleword english words
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "json/english_words.json") , "r") as f:
-    randle_words = list(json.load(f).values())
-    logger.info(f'loaded {len(randle_words)} randle words')
+base_dir = os.path.dirname(os.path.abspath(__file__))
+res_dir = os.path.join(base_dir, "resources")
+da_nouns = _read_wordlist(os.path.join(res_dir, "da_nouns.txt"))
+da_adjs = _read_wordlist(os.path.join(res_dir, "da_adjectives.txt"))
+da_verbs = _read_wordlist(os.path.join(res_dir, "da_verbs.txt"))
+
+words = list(set(da_nouns + da_adjs + da_verbs))
+if len(words) == 0:
+    # Fallback to DanishWords built from corpus
+    dw_path = os.path.join(base_dir, "json/danish_words.json")
+    if os.path.exists(dw_path):
+        with open(dw_path, "r", encoding="utf-8") as f:
+            words = list(json.load(f).values())
+    else:
+        # Minimal fallback to keep script running; replace with real lists
+        words = [
+            "hus", "by", "vej", "vindue", "have", "bord", "stol", "lys", "vand", "kaffe",
+            "lærer", "elev", "bog", "avis", "computer", "telefon", "musik", "kunst", "mad", "butik",
+        ]
+    logger.info(f'loaded {len(words)} Danish words (fallback or built)')
+else:
+    logger.info(f'loaded {len(words)} Danish resource words')
+
+random.Random(args.random_seed).shuffle(words)
+
+# Large fallback pool if more unique words are needed
+dw_pool_path = os.path.join(base_dir, "json/danish_words.json")
+fallback_words = []
+if os.path.exists(dw_pool_path):
+    with open(dw_pool_path, "r", encoding="utf-8") as f:
+        fallback_words = list(json.load(f).values())
+        logger.info(f'loaded {len(fallback_words)} fallback Danish words')
 
 def get_example(num_words, common_repeats=30, uncommon_repeats=3, common_nums=10):
     if num_words <= len(words):
         word_list_full = random.sample(words, num_words)
     else:
-        word_list_full = random.sample(randle_words, num_words)
+        pool = fallback_words if len(fallback_words) >= num_words else (words * (num_words // max(1,len(words)) + 1))
+        word_list_full = random.sample(pool, num_words)
 
     common, uncommon = word_list_full[:common_nums], word_list_full[common_nums:]
     word_list = common * int(common_repeats) + uncommon * int(uncommon_repeats)

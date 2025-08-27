@@ -37,14 +37,11 @@ import subprocess
 import time
 import yaml
 from pathlib import Path
-from template import Templates
 import nltk
 try:
     nltk.data.find('tokenizers/punkt')
-    # nltk.data.find('tokenizers/punkt_tab')
 except LookupError:
     nltk.download('punkt')
-    nltk.download('punkt_tab')
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--save_dir", type=Path, required=True, help='dataset folder to save dataset')
@@ -56,7 +53,7 @@ parser.add_argument("--tokenizer_type",  type=str, default='nemo', help='[Option
 parser.add_argument("--max_seq_length", type=int, required=True, help='max sequence length including all input tokens and generated tokens.')
 parser.add_argument("--num_samples", type=int, default=500, help='maximum number of samples we want to test')
 parser.add_argument("--random_seed", type=int, default=42)
-parser.add_argument("--model_template_type", type=str, default='base', help='Options in `template.py`')
+parser.add_argument("--model_template_type", type=str, default='auto', help='Deprecated: chat templates are applied server-side; kept for compatibility but ignored')
 parser.add_argument("--remove_newline_tab", action='store_true', help='remove `\n` and `\t` in all strings.')
 parser.add_argument("--chunk_idx", type=int, default=0, help='index of current split chunk')
 parser.add_argument("--chunk_amount", type=int, default=1, help='size of split chunk')
@@ -83,22 +80,10 @@ def main():
     config = tasks_customized.get(args.task)
     config.update(tasks_base[config['task']])
 
-    # Add templates
-    assert args.model_template_type in Templates, print(f'{args.model_template_type} is not found in {Templates.keys()}')
-    model_template = Templates[args.model_template_type]
-
-    if args.prepare_for_ns:  
-        from tokenizer import select_tokenizer
-        TOKENIZER = select_tokenizer(args.tokenizer_type, args.tokenizer_path)
-        model_template_token = len(TOKENIZER.text_to_tokens(model_template))
-        model_template = Templates['base']
-
+    # Compose plain task template; chat templates are handled by the server.
     task_template = config['template']
-    
-    # Add answer prefix for all models
-    answer_prefix = config['answer_prefix'] if 'answer_prefix' in config else ''
-
-    config['template'] = model_template.format(task_template=task_template) + answer_prefix
+    answer_prefix = config.get('answer_prefix', '')
+    config['template'] = task_template + answer_prefix
 
     # Split task into multiple chunks 
     chunks = [(args.num_samples // args.chunk_amount) + (1 if i < args.num_samples % args.chunk_amount else 0) for i in range(args.chunk_amount)]
@@ -136,8 +121,7 @@ def main():
             {f"--pre_samples {pre_samples}" if config['task'] == 'qa' else ""} \
             --template "{config['template']}" \
             """
-            if args.prepare_for_ns:
-                command += f""" --model_template_token {model_template_token}"""
+            # model_template_token is deprecated; leave as 0 if present in scripts.
             
             print(command)
             result = subprocess.run(command, 

@@ -79,11 +79,15 @@ TOKENIZER = select_tokenizer(args.tokenizer_type, args.tokenizer_path)
 
 # Define Needle/Haystack Format
 if args.type_haystack == 'essay':
-    essay = os.path.join(os.path.dirname(os.path.abspath(__file__)), "json/PaulGrahamEssays.json")
-    essay = json.load(open(essay))['text']
+    essay = os.path.join(os.path.dirname(os.path.abspath(__file__)), "json/DanishLongText.json")
+    try:
+        essay = json.load(open(essay))['text']
+    except Exception as e:
+        logger.warning(f"Kunne ikke indlæse DanishLongText.json ({e}). Fald tilbage til støjtekst.")
+        essay = "Græsset er grønt. Himlen er blå. Solen er gul. Så kører vi. Frem og tilbage igen. " * 200
     haystack = re.sub(r'\s+', " ", essay).split(" ")
 elif args.type_haystack == 'noise':
-    haystack = "The grass is green. The sky is blue. The sun is yellow. Here we go. There and back again."
+    haystack = "Græsset er grønt. Himlen er blå. Solen er gul. Så kører vi. Frem og tilbage igen."
 else:
     raise NotImplementedError(f'{args.type_haystack} is not implemented.')
 
@@ -134,7 +138,7 @@ def generate_input_output(num_noises, num_chains, num_hops, is_icl=False):
 
     if args.type_haystack == 'essay':
         text = " ".join(haystack[:num_noises])
-        document_sents = sent_tokenize(text.strip())
+        document_sents = sent_tokenize(text.strip(), language="danish")
         chains_flat = shuffle_sublists_heap(chains)
         insertion_positions = [0] + \
                               sorted([int(len(document_sents) * (depth / 100)) for depth in random.sample(DEPTHS, len(chains_flat))]) + \

@@ -82,11 +82,12 @@ bash download_qa_dataset.sh
 ```
 ### 2. Download model 
 - We download the models from [Huggingface](https://huggingface.co/models).
-- The input template of each model is stored in `scripts/data/template.py`. Please add new model template if your new model uses a different chat template.
+- Modern workflow: serve models via an OpenAI-compatible server (e.g., vLLM OpenAI server) and use `scripts/launch.py`. Chat templates are applied server-side by the tokenizer; no manual template configuration is needed.
 - Increase `max_position_embeddings` in `config.json` if you want to run inference longer than model defined length.
-- (Optional) If you are using [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/tree/main), please build your model engine based on their example scripts (e.g., [Llama](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/llama)) with their [Docker container](https://github.com/NVIDIA/TensorRT-LLM/tree/main?tab=readme-ov-file#installation).
 
-### 3. Run evaluation pipeline
+### 3. Run evaluation pipeline (deprecated)
+
+The legacy `run.sh` + `config_models.sh` flow is deprecated. Prefer the modern single-launch workflow documented below. If you still wish to use the legacy scripts:
 
 - **Setup `run.sh`**
 ```
@@ -175,3 +176,43 @@ While tasks in RULER are designed to be configurable, we only evaluate the above
 }
 ```
 Disclaimer: This project is strictly for research purposes, and not an official product from NVIDIA.
+
+## 🇩🇰 Danish adaptation
+- Prompts and answer prefixes are now in Danish for all synthetic tasks.
+- For haystack content in tasks using `type_haystack: essay`, the code reads `scripts/data/synthetic/json/DanishLongText.json`. A default placeholder is provided; replace its `text` with your preferred Danish corpus for best results.
+- Sentence tokenization uses NLTK's Danish rules; ensure `punkt` is available.
+- String matching in evaluation is Unicode‑aware (casefold + normalization) to handle Danish diacritics.
+- QA datasets: current loaders still reference SQuAD/Hotpot formats. If you do not have Danish QA yet, remove `qa_1` and `qa_2` from `scripts/config_tasks.sh` or comment them out in `scripts/synthetic.yaml` until you add Danish equivalents.
+
+## 🚀 Modernized single-launch workflow
+- Start an OpenAI-compatible server (e.g., vLLM OpenAI server):
+  - `python -m vllm.entrypoints.openai.api_server --model <hf-repo-or-path> --port 8000 --dtype bfloat16`
+  - `export OPENAI_BASE_URL=http://127.0.0.1:8000/v1`
+  - `export OPENAI_API_KEY=dummy`
+
+- Run the unified launcher (discovers model via `/v1/models`, prepares on demand, predicts, evaluates):
+  - `python scripts/launch.py --benchmark synthetic --seq-lengths 4096,8192 --num-samples 200 --exclude-qa`
+  - Optional flags:
+    - `--model <override>` to bypass discovery
+    - `--model_local_path </path/to/local/hf/model>` for exact token budgeting
+    - `--tasks <comma-list>` or `--tasks all` (default)
+    - `--template <template-name>` to override chat template (default auto)
+
+- Outputs:
+  - Data and predictions under `benchmark_root/<model>/<benchmark>/<seq>/`
+  - Evaluation CSV under the same `pred/` folder.
+
+### Build Danish data locally
+- Danish Wikipedia to `DanishLongText.json`:
+  - Run: `bash scripts/data/synthetic/json/download_danish_wikipedia.sh` (requires `wget` and `pip install wikiextractor`).
+  - Or manually: extract `.txt` files to a folder, then run:
+    - `python scripts/data/synthetic/json/build_danish_longtext.py --sources_dir /path/to/txts`
+
+- Build Danish word pool `danish_words.json` from the long text:
+  - `python scripts/data/synthetic/json/build_danish_words.py --longtext_json scripts/data/synthetic/json/DanishLongText.json --min_len 2 --min_freq 1`
+
+- Optional curated lists (if you have them): place `da_nouns.txt`, `da_adjectives.txt`, `da_verbs.txt` in `scripts/data/synthetic/resources/` (UTF‑8, one word per line). Generators will use them automatically.
+
+### Chat templates and token budgeting
+- Inference uses `/v1/chat/completions`. The server applies the model’s chat template.
+- Preparation no longer applies manual prompt wrappers. Token budgets are computed with the HF tokenizer; if a chat template exists, it is applied only for counting via `tokenizer.apply_chat_template`.

@@ -46,7 +46,6 @@ from nemo.collections.asr.parts.utils.manifest_utils import read_manifest
 
 SERVER_TYPES = (
     'trtllm',
-    'vllm',
     'sglang',
     'openai',
     'gemini',
@@ -112,20 +111,6 @@ def get_llm(tokens_to_generate):
             max_attention_window_size=args.sliding_window_size,
         )
 
-    elif args.server_type == 'vllm':
-        from client_wrappers import VLLMClient
-        llm = VLLMClient(
-            server_host=args.server_host,
-            server_port=args.server_port,
-            ssh_server=args.ssh_server,
-            ssh_key_path=args.ssh_key_path,
-            temperature=args.temperature,
-            top_k=args.top_k,
-            top_p=args.top_p,
-            random_seed=args.random_seed,
-            stop=args.stop_words,
-            tokens_to_generate=tokens_to_generate,
-        )
 
     elif args.server_type == 'sglang':
         from client_wrappers import SGLClient

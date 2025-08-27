@@ -34,7 +34,7 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 import random
-import wonderwords
+ 
 import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from tokenizer import select_tokenizer
@@ -80,25 +80,51 @@ args.num_needle_k = max(args.num_needle_k, args.num_needle_q)
 TOKENIZER = select_tokenizer(args.tokenizer_type, args.tokenizer_path)
 
 # Define Needle/Haystack Format
-needle = "One of the special magic {type_needle_v} for {key} is: {value}."
+needle = "Et af de særlige magiske {type_needle_v} for {key} er: {value}."
 if args.type_haystack == 'essay':
-    essay = os.path.join(os.path.dirname(os.path.abspath(__file__)), "json/PaulGrahamEssays.json")
-    essay = json.load(open(essay))['text']
+    essay = os.path.join(os.path.dirname(os.path.abspath(__file__)), "json/DanishLongText.json")
+    try:
+        essay = json.load(open(essay))['text']
+    except Exception as e:
+        logger.warning(f"Kunne ikke indlæse DanishLongText.json ({e}). Fald tilbage til støjtekst.")
+        essay = "Græsset er grønt. Himlen er blå. Solen er gul. Så kører vi. Frem og tilbage igen. " * 200
     haystack = re.sub(r'\s+', " ", essay).split(" ")
 elif args.type_haystack == 'noise':
-    haystack = "The grass is green. The sky is blue. The sun is yellow. Here we go. There and back again."
+    haystack = "Græsset er grønt. Himlen er blå. Solen er gul. Så kører vi. Frem og tilbage igen."
 elif args.type_haystack == 'needle':
     haystack = needle
 else:
     raise NotImplementedError(f'{args.type_haystack} is not implemented.')
 
 
-# Words
-nouns = wonderwords.random_word._get_words_from_text_file("nounlist.txt")
-adjs = wonderwords.random_word._get_words_from_text_file("adjectivelist.txt")
-# verbs = wonderwords.random_word._get_words_from_text_file("verblist.txt")
-words = [f"{adj}-{noun}" for adj in adjs for noun in nouns]
-words = sorted(list(set(words)))
+# Words (Danish resources)
+def _read_wordlist(path):
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return [w.strip() for w in f if w.strip()]
+    return []
+
+base_dir = os.path.dirname(os.path.abspath(__file__))
+res_dir = os.path.join(base_dir, "resources")
+da_nouns = _read_wordlist(os.path.join(res_dir, "da_nouns.txt"))
+da_adjs = _read_wordlist(os.path.join(res_dir, "da_adjectives.txt"))
+
+# Precompute adjective-noun pairs if resources are available; otherwise, fallback to large word pool
+if len(da_nouns) > 0 and len(da_adjs) > 0:
+    words = [f"{adj}-{noun}" for adj in da_adjs for noun in da_nouns]
+    words = sorted(list(set(words)))
+else:
+    words = []
+    dw_path = os.path.join(base_dir, "json/danish_words.json")
+    fallback_words = []
+    if os.path.exists(dw_path):
+        with open(dw_path, "r", encoding="utf-8") as f:
+            fallback_words = list(json.load(f).values())
+    else:
+        fallback_words = [
+            "hus", "by", "vej", "vindue", "have", "bord", "stol", "lys", "vand", "kaffe",
+            "lærer", "elev", "bog", "avis", "computer", "telefon", "musik", "kunst", "mad", "butik",
+        ]
 
 
 # Positions
@@ -111,8 +137,12 @@ def generate_random_number(num_digits=7):
     return str(random.randint(lower_bound, upper_bound))
 
 def generate_random_word():
-    word = random.choice(words)
-    return word
+    if len(words) > 0:
+        return random.choice(words)
+    # Generate a hyphenated pair from fallback pool for uniqueness
+    if 'fallback_words' in globals() and len(fallback_words) >= 2:
+        return f"{random.choice(fallback_words)}-{random.choice(fallback_words)}"
+    return 'ord'
 
 def generate_random_uuid():
     return str(uuid.UUID(int=random.getrandbits(128), version=4))
@@ -152,7 +182,7 @@ def generate_input_output(num_haystack):
             # Repeat haystack as many times as needed and slice to num_haystack
             repeats = (num_haystack + len(haystack) - 1) // len(haystack)  # Ceiling division
             text = " ".join((haystack * repeats)[:num_haystack])
-        document_sents = sent_tokenize(text.strip())
+        document_sents = sent_tokenize(text.strip(), language="danish")
         insertion_positions = [0] + \
                               sorted([int(len(document_sents) * (depth / 100)) for depth in random.sample(DEPTHS, len(needles))]) + \
                               [len(document_sents)]
@@ -186,16 +216,16 @@ def generate_input_output(num_haystack):
     indices = random.sample(range(args.num_needle_k), args.num_needle_q)
     queries = [keys[i] for i in indices]
     answers = [a for i in indices for a in values[i]]
-    query = ', '.join(queries[:-1]) + ', and ' + queries[-1] if len(queries) > 1 else queries[0]
+    query = ', '.join(queries[:-1]) + ', og ' + queries[-1] if len(queries) > 1 else queries[0]
 
     template = args.template
-    type_needle_v = args.type_needle_v
-    if args.num_needle_q * args.num_needle_v == 1:
-        template = template.replace('Some', 'A')
-        template = template.replace('are all', 'is')
-        template = template.replace('are', 'is')
-        template = template.replace('answers', 'answer')
-        type_needle_v = type_needle_v[:-1] # remove "s"
+    # Display labels in Danish for value types
+    type_label_map = {
+        'numbers': 'tal',
+        'words': 'ord',
+        'uuids': "UUID'er",
+    }
+    type_needle_v = type_label_map.get(args.type_needle_v, args.type_needle_v)
 
     input_text = template.format(
         type_needle_v=type_needle_v,
