@@ -367,7 +367,7 @@ class AsyncOpenAIClient:
     ):
         # Allow empty API key for local OpenAI-compatible servers (e.g., vLLM)
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "dummy")
-        self.openai_base_url = os.getenv("OPENAI_BASE_URL", None)
+        self.openai_base_url = os.getenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
         self.model_name = model_name
         self.generation_kwargs = generation_kwargs
         self._create_client()

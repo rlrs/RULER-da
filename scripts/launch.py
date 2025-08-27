@@ -40,7 +40,7 @@ def get_models_via_openai() -> list:
         from openai import OpenAI
     except Exception:
         return []
-    base_url = os.getenv("OPENAI_BASE_URL")
+    base_url = os.getenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
     api_key = os.getenv("OPENAI_API_KEY", "dummy")
     if not base_url:
         return []
