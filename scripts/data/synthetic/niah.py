@@ -54,7 +54,7 @@ parser.add_argument("--save_dir", type=Path, required=True, help='dataset folder
 parser.add_argument("--save_name", type=str, required=True, help='name of the save dataset jsonl file')
 parser.add_argument("--subset", type=str, default='validation', help='Options: validation or test')
 parser.add_argument("--tokenizer_path", type=str, required=True, help='path to the tokenizer model')
-parser.add_argument("--tokenizer_type",  type=str, default='nemo', help='[Options] nemo, hf, openai.')
+parser.add_argument("--tokenizer_type",  type=str, default='hf', help='[Options] hf, spm, openai.')
 parser.add_argument("--max_seq_length", type=int, required=True, help='max sequence length including all input tokens and generated tokens.')
 parser.add_argument("--tokens_to_generate", type=int, required=True, help='expected generated token amount.')
 parser.add_argument("--num_samples", type=int, required=True, help='number of samples to generate')

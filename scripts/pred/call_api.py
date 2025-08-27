@@ -42,7 +42,7 @@ import time
 from tqdm import tqdm
 from pathlib import Path
 import traceback
-from nemo.collections.asr.parts.utils.manifest_utils import read_manifest
+read_manifest = None  # lazy-imported from data.manifest_utils in main after sys.path setup
 
 SERVER_TYPES = (
     'trtllm',
@@ -192,6 +192,9 @@ def main():
     try:
         sys.path.append(os.path.dirname(curr_folder))
         module = importlib.import_module(f"data.{args.benchmark}.constants")
+        # Import our local manifest utils (avoid NeMo dependency)
+        global read_manifest
+        from data.manifest_utils import read_manifest
     except ImportError:
         print(f"Module data.{args.benchmark}.constants not found.")
 

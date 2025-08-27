@@ -52,23 +52,6 @@ def get_models_via_openai() -> list:
         return []
 
 
-def default_template_for_model(model_name: str) -> str:
-    name = (model_name or "").lower()
-    if "llama-3" in name or "meta-llama-3" in name:
-        return "meta-llama3"
-    if "jamba" in name:
-        return "jamba"
-    if "nemotron" in name:
-        return "nemotron5-instruct"
-    if "command-r" in name:
-        return "command-r-chat"
-    if "phi-3" in name:
-        return "Phi3"
-    if "glm" in name:
-        return "chatglm-chat"
-    # safe default for instruct models
-    return "meta-llama3"
-
 
 from typing import Optional, Tuple
 
@@ -81,7 +64,7 @@ def detect_tokenizer(model_name: str, model_local_path: Optional[str]) -> Tuple[
     if model_local_path:
         mpath = Path(model_local_path)
         if (mpath / "tokenizer.model").exists():
-            return "nemo", str(mpath / "tokenizer.model")
+            return "spm", str(mpath / "tokenizer.model")
         if mpath.exists():
             return "hf", str(mpath)
     if model_name:
@@ -105,7 +88,7 @@ def load_tasks(benchmark: str, exclude_qa: bool) -> list[str]:
 
 def ensure_dataset(task: str, seq_len: int, num_samples: int, benchmark: str,
                    tokenizer_type: str, tokenizer_path: str,
-                   template_type: str, data_dir: Path, remove_newline_tab: bool = False) -> None:
+                   data_dir: Path, remove_newline_tab: bool = False) -> None:
     out_dir = data_dir / task
     out_file = out_dir / "validation.jsonl"
     if out_file.exists():
@@ -119,7 +102,6 @@ def ensure_dataset(task: str, seq_len: int, num_samples: int, benchmark: str,
         "--tokenizer_path", tokenizer_path,
         "--tokenizer_type", tokenizer_type,
         "--max_seq_length", str(seq_len),
-        "--model_template_type", template_type,
         "--num_samples", str(num_samples),
     ]
     if remove_newline_tab:
@@ -169,7 +151,7 @@ def parse_args():
     p.add_argument("--batch_size", type=int, default=1)
     p.add_argument("--model", default=None, help="served model id for OpenAI API; if omitted, discover via /v1/models")
     p.add_argument("--model_local_path", default=None, help="HF model dir for tokenizer (optional)")
-    p.add_argument("--template", default=None, help="override chat template type (defaults to auto)")
+    # No manual chat template; server-side tokenizer applies it
     p.add_argument("--save_root", default="benchmark_root")
     p.add_argument("--remove_newline_tab", action="store_true")
     return p.parse_args()
@@ -187,9 +169,6 @@ def main():
         # Pick the first model, or refine selection here
         model_name = models[0]
         print(f"Discovered model: {model_name}")
-
-    # Select template (assume instruct models)
-    template_type = args.template or default_template_for_model(model_name)
 
     # Select tokenizer for prepare
     tok_type, tok_path = detect_tokenizer(model_name, args.model_local_path)
@@ -217,7 +196,7 @@ def main():
         for task in tasks:
             ensure_dataset(
                 task=task, seq_len=L, num_samples=args.num_samples, benchmark=args.benchmark,
-                tokenizer_type=tok_type, tokenizer_path=tok_path, template_type=template_type,
+                tokenizer_type=tok_type, tokenizer_path=tok_path,
                 data_dir=data_dir, remove_newline_tab=args.remove_newline_tab,
             )
             run_predictions(

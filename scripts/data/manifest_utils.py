@@ -13,6 +13,7 @@
 # limitations under the License
 
 import json
+from typing import List, Dict, Any
 
 
 def write_manifest(output_path, target_manifest, ensure_ascii: bool = True):
@@ -30,3 +31,15 @@ def write_manifest(output_path, target_manifest, ensure_ascii: bool = True):
         for tgt in target_manifest:
             json.dump(tgt, outfile, ensure_ascii=ensure_ascii)
             outfile.write('\n')
+
+
+def read_manifest(path) -> List[Dict[str, Any]]:
+    """Read a JSON-lines manifest into a list of dicts."""
+    data = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            data.append(json.loads(line))
+    return data

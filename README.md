@@ -196,7 +196,6 @@ Disclaimer: This project is strictly for research purposes, and not an official 
     - `--model <override>` to bypass discovery
     - `--model_local_path </path/to/local/hf/model>` for exact token budgeting
     - `--tasks <comma-list>` or `--tasks all` (default)
-    - `--template <template-name>` to override chat template (default auto)
 
 - Outputs:
   - Data and predictions under `benchmark_root/<model>/<benchmark>/<seq>/`

@@ -24,51 +24,32 @@ from tenacity import (
 
 
 def select_tokenizer(tokenizer_type, tokenizer_path):
-    if tokenizer_type == 'nemo':
-        return NeMoSentencePieceTokenizer(model_path=tokenizer_path)
-    elif tokenizer_type == 'nemo_tiktoken':
-        return NeMoTikTokenTokenizer(model_path=tokenizer_path)
-    elif tokenizer_type == 'hf':
+    if tokenizer_type == 'hf':
         return HFTokenizer(model_path=tokenizer_path)
     elif tokenizer_type == 'openai':
         return OpenAITokenizer(model_path=tokenizer_path)
     elif tokenizer_type == 'gemini':
         return GeminiTokenizer(model_path=tokenizer_path)
+    elif tokenizer_type == 'spm':
+        return SPMTokenizer(model_path=tokenizer_path)
     else:
         raise ValueError(f"Unknown tokenizer_type {tokenizer_type}")
 
 
-class NeMoSentencePieceTokenizer:
+class SPMTokenizer:
     """
-    Tokenizer from NeMo SentencePieceTokenizer
-    """
-    def __init__(self, model_path) -> None:
-        from nemo.collections.common.tokenizers.sentencepiece_tokenizer import SentencePieceTokenizer
-        self.tokenizer = SentencePieceTokenizer(model_path=model_path)
-    
-    def text_to_tokens(self, text: str) -> List[str]:
-        tokens = self.tokenizer.text_to_tokens(text)
-        return tokens
-
-    def tokens_to_text(self, tokens: List[int]) -> str:
-        text = self.tokenizer.tokens_to_text(tokens)
-        return text
-
-class NeMoTikTokenTokenizer:
-    """
-    Tokenizer from NeMo SentencePieceTokenizer
+    Tokenizer using the sentencepiece python package.
     """
     def __init__(self, model_path) -> None:
-        from nemo.collections.common.tokenizers.tiktoken_tokenizer import TiktokenTokenizer
-        self.tokenizer = TiktokenTokenizer(vocab_file=model_path)
-    
-    def text_to_tokens(self, text: str) -> List[str]:
-        tokens = self.tokenizer.text_to_tokens(text)
-        return tokens
+        import sentencepiece as spm
+        self.processor = spm.SentencePieceProcessor(model_file=model_path)
+
+    def text_to_tokens(self, text: str) -> List[int]:
+        # Return ids for counting
+        return list(self.processor.encode(text, out_type=int))
 
     def tokens_to_text(self, tokens: List[int]) -> str:
-        text = self.tokenizer.tokens_to_text(tokens)
-        return text
+        return self.processor.decode(tokens)
 
 
 class HFTokenizer:

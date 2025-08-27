@@ -167,25 +167,6 @@ class OpenAIClient:
         model_name,
         **generation_kwargs
     ):  
-        model2length = {
-            # OpenAI
-            'gpt-4': 8192,
-            'gpt-4-0613': 8192,
-            'gpt-4-1106-preview': 128000,
-            'gpt-4-0125-preview': 128000,
-            'gpt-4-turbo-preview': 128000,
-            'gpt-3.5-turbo-0125': 16385,
-            'gpt-3.5-turbo-1106': 16385,
-            'gpt-3.5-turbo-0613': 4096,
-            'gpt-3.5-turbo': 16385,
-            'gpt-3.5-turbo-16k': 16385,
-            'gpt-3.5-turbo-16k-0613': 16385,
-
-            # Azure
-            'gpt-4-32k': 32768,
-            'gpt-4': 128000,
-            'gpt-35-turbo-16k': 16384,
-        }
         # Allow empty API key for local OpenAI-compatible servers (e.g., vLLM)
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "dummy")
         self.azure_api_id = os.getenv("AZURE_API_ID", "")
@@ -199,9 +180,6 @@ class OpenAIClient:
             if 'gpt-3.5' in model_name: self.model_name = 'gpt-35-turbo-16k'
             if 'gpt-4' in model_name: self.model_name = 'gpt-4'
         
-        import tiktoken
-        self.encoding = tiktoken.get_encoding("cl100k_base")
-        self.max_length = model2length.get(self.model_name, 128000)
         self.generation_kwargs = generation_kwargs
         self._create_client()
         
@@ -229,19 +207,6 @@ class OpenAIClient:
                 api_version="2024-02-15-preview",
                 azure_endpoint=os.path.join(self.azure_api_endpoint, "llm/v1/azure"),
             )
-        
-    def _count_tokens(self, messages):
-        tokens_per_message = 3
-        tokens_per_name = 1
-        num_tokens = 0
-        for message in messages:
-            num_tokens += tokens_per_message
-            for key, value in message.items():
-                num_tokens += len(self.encoding.encode(value))
-                if key == "name":
-                    num_tokens += tokens_per_name
-        num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
-        return num_tokens
         
     @retry(wait=wait_random_exponential(min=15, max=60), stop=stop_after_attempt(3))
     def _send_request(self, request):
@@ -271,14 +236,7 @@ class OpenAIClient:
         system_msg = []
         user_assistant_msgs = [{"role": "user", "content": prompt}]
         msgs = system_msg + user_assistant_msgs
-        openai_length = self._count_tokens(msgs)
         request = self.generation_kwargs
-        
-        tokens_to_generate_new = self.max_length - openai_length
-        if tokens_to_generate_new < request['tokens_to_generate']:
-            print(f"Reduce generate tokens from {request['tokens_to_generate']} to {tokens_to_generate_new}")
-            request['tokens_to_generate'] = tokens_to_generate_new
-    
         request["msgs"] = msgs
         outputs = self._send_request(request)
         response = {'text': [outputs.choices[0].message.content]}
