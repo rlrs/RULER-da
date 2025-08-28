@@ -136,6 +136,14 @@ def run_eval(pred_dir: Path, benchmark: str) -> None:
     subprocess.run(cmd, check=True)
 
 
+def summarize_lengths(base_dir: Path) -> None:
+    cmd = [
+        sys.executable, str(Path(__file__).parent / "eval/summarize_lengths.py"),
+        "--base_dir", str(base_dir),
+    ]
+    subprocess.run(cmd, check=True)
+
+
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--benchmark", default="synthetic")
@@ -203,6 +211,12 @@ def main():
             )
 
         run_eval(pred_dir=pred_dir, benchmark=args.benchmark)
+
+    # Summarize across lengths (Avg and wAvg inc)
+    try:
+        summarize_lengths(root)
+    except Exception as e:
+        print(f"[warn] Failed to summarize across lengths: {e}")
 
     print("Launch completed.")
 

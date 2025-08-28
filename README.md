@@ -33,6 +33,11 @@ Important: The large model results table from the original RULER README does not
   - Outputs per base (e.g., `benchmark_root/<model>/synthetic/plots/`):
     - All tasks: `<task>_acc_vs_length.png`
     - NIAH only: `<task>_heatmap_len_depth.png` (red=0%, green=100%, grey=missing)
+  - After launch: the script also writes an aggregated `summary-lengths.csv` at the base (`benchmark_root/<model>/synthetic/`) with:
+    - `Lengths`: the evaluated context lengths
+    - `AvgPerLength`: macro‑average across tasks at each length
+    - `OverallAvg`: unweighted average over lengths
+    - `wAvgInc`: weighted average favoring longer contexts
 
 
 ## What’s Included
@@ -93,4 +98,3 @@ Important: The large model results table from the original RULER README does not
 ## Citation & Acknowledgements
 - Original paper: Hsieh et al., “RULER: What’s the Real Context Size of Your Long‑Context Language Models?” arXiv:2404.06654 — https://arxiv.org/abs/2404.06654
 - This adaptation draws on the original RULER codebase by NVIDIA, but has been significantly changed (language, flow, clients, and utils). It is strictly for research purposes.
-
