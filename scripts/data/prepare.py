@@ -31,6 +31,7 @@ python prepare.py \
     --num_samples 10 \
 """
 import os
+import sys
 import argparse
 import importlib
 import subprocess
@@ -68,7 +69,7 @@ def main():
     try:
         module = importlib.import_module(f"{args.benchmark}.constants")
     except ImportError:
-        print(f"Module data.{args.benchmark}.constants not found.")
+        print(f"Module data.{args.benchmark}.constants not found.", file=sys.stderr)
 
     tasks_base = module.TASKS
     with open(os.path.join(curr_folder, f"../{args.benchmark}.yaml"), "r") as f:
@@ -106,7 +107,8 @@ def main():
         try:
             script = os.path.join(curr_folder, args.benchmark, f"{config['task']}.py")
             additional_args = " ".join([f"--{k} {v}" for k, v in config['args'].items()])
-            command = f"""python {script} \
+            python_exec = sys.executable
+            command = f"""{python_exec} {script} \
             --save_dir  {args.save_dir} \
             --save_name {args.task} \
             --subset {args.subset} \
@@ -123,30 +125,29 @@ def main():
             """
             # model_template_token is deprecated; leave as 0 if present in scripts.
             
-            print(command)
-            result = subprocess.run(command, 
-                                    shell=True, 
-                                    check=True, 
-                                    stdout=subprocess.PIPE, 
-                                    stderr=subprocess.PIPE, 
-                                    text=True)
-            
-            if result.returncode == 0:
-                print("Output:")
-                print(result.stdout)
-            else:
-                print("Error:")
-                print(result.stderr)
+            result = subprocess.run(
+                command,
+                shell=True,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            # Do not print stdout on success to keep parent stdout clean for JSON
+            if result.returncode != 0:
+                print(result.stderr, file=sys.stderr)
                 raise subprocess.CalledProcessError(result.returncode, command, result.stdout, result.stderr)
         except subprocess.CalledProcessError as e:
-            print("Error output:", e.stderr)
+            # Surface only to stderr so upstream JSON stdout remains clean
+            print("Error output:", e.stderr, file=sys.stderr)
             # Abort on failure; do not claim success
             raise SystemExit(1)
 
-        print(f"Prepare {args.task} with lines: {args.num_samples} to {save_file}")
-        print(f"Used time: {round((time.time() - start_time) / 60, 1)} minutes")
+        # Progress messages to stderr to avoid polluting parent stdout
+        print(f"Prepare {args.task} with lines: {args.num_samples} to {save_file}", file=sys.stderr)
+        print(f"Used time: {round((time.time() - start_time) / 60, 1)} minutes", file=sys.stderr)
     else:
-        print(f"Skip preparing {args.task} with lines: {args.num_samples} to {save_file} (file exists)")
+        print(f"Skip preparing {args.task} with lines: {args.num_samples} to {save_file} (file exists)", file=sys.stderr)
     
 if __name__ == '__main__':
     main()

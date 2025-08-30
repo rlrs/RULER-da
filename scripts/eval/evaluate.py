@@ -128,7 +128,8 @@ def write_evaluation(results: dict):
 
     output_file = os.path.join(args.data_dir, 'summary.csv' if len(tasks) > 1 else f'summary-{tasks[0]}.csv')
     df = pd.DataFrame(dfs)
-    df.to_csv(output_file, index=False)
+    # Write without header row to avoid a leading numeric header ("0,1,2,...")
+    df.to_csv(output_file, index=False, header=False)
     print('\n=============================================\n')
     print(df)
     print(f'\nSaved eval results to {output_file}')
